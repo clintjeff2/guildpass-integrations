@@ -1,0 +1,136 @@
+# Contributing to GuildPass Frontend
+
+Thank you for your interest in contributing to the GuildPass Frontend! This repository is listed on [GrantFox](https://contribute.grantfox.xyz) for open contributions.
+
+## Table of Contents
+
+- [Code of Conduct](#code-of-conduct)
+- [Ways to Contribute](#ways-to-contribute)
+- [Finding Issues via GrantFox](#finding-issues-via-grantfox)
+- [Development Setup](#development-setup)
+- [Branching & Commits](#branching--commits)
+- [Submitting a Pull Request](#submitting-a-pull-request)
+- [Review Process](#review-process)
+- [Communication](#communication)
+
+---
+
+## Code of Conduct
+
+By participating you agree to our [Code of Conduct](./CODE_OF_CONDUCT.md).
+
+---
+
+## Ways to Contribute
+
+- Fix UI bugs or visual regressions
+- Add or improve member/admin dashboard components
+- Improve wallet connect or role-aware UX
+- Add tests or improve existing test coverage
+- Improve accessibility (a11y) across pages
+- Improve TypeScript types in `lib/api/types.ts`
+- Improve mock data in the demo/mock API layer
+- Fix linting or TypeScript errors
+
+---
+
+## Finding Issues via GrantFox
+
+1. Visit the [GrantFox contributor app](https://contribute.grantfox.xyz) and find the **Adamantine-Guild / guildpass-integrations** project.
+2. Browse issues tagged `good first issue` or `help wanted`.
+3. Apply for an issue on GrantFox, or comment `I'd like to work on this` on the GitHub issue.
+4. Wait for a maintainer to assign it before starting.
+
+Direct GitHub filters:
+- [`good first issue`](https://github.com/Adamantine-Guild/guildpass-integrations/issues?q=label%3A%22good+first+issue%22)
+- [`help wanted`](https://github.com/Adamantine-Guild/guildpass-integrations/issues?q=label%3A%22help+wanted%22)
+
+---
+
+## Development Setup
+
+### Prerequisites
+
+- Node.js 18+
+- npm 9+
+
+### Steps
+
+```bash
+# 1. Fork and clone
+git clone https://github.com/<your-username>/guildpass-integrations.git
+cd guildpass-integrations
+
+# 2. Install dependencies
+npm install
+
+# 3. Copy and configure environment
+cp .env.example .env.local
+# For mock mode, no changes needed
+
+# 4. Start the dev server in mock mode
+NEXT_PUBLIC_MOCK_MODE=true npm run dev
+
+# Open http://localhost:3000
+```
+
+### Architecture overview
+
+| Path | Purpose |
+|---|---|
+| `app/*` | Next.js App Router pages |
+| `lib/api/*` | API layer (mock ↔ live switch) |
+| `components/ui/*` | Shadcn-style UI primitives |
+| `components/gated.tsx` | Access-gate component |
+| `components/nav.tsx` | Navigation bar |
+
+---
+
+## Branching & Commits
+
+- Branch off `main`: `git checkout -b feat/short-description` or `fix/short-description`
+- Conventional commits:
+  - `feat: add contribution history section to member dashboard`
+  - `fix: correct role badge colour for contributor`
+  - `style: align spacing on admin member list`
+  - `test: add mock API test for membership status`
+  - `chore: upgrade wagmi to v2.13`
+
+---
+
+## Submitting a Pull Request
+
+1. Push your branch to your fork.
+2. Open a PR against `Adamantine-Guild/guildpass-integrations` on `main`.
+3. Fill in the [PR template](.github/PULL_REQUEST_TEMPLATE.md) completely.
+4. Ensure these pass:
+
+```bash
+npm run typecheck   # Must pass
+npm run lint        # Fix all reported issues
+```
+
+### PR Quality Expectations
+
+- UI changes must include a screenshot in the PR description.
+- New components must work in mock mode (`NEXT_PUBLIC_MOCK_MODE=true`).
+- Keep feature logic separate from presentational components.
+- Add loading, empty, and error states in new feature modules.
+- Prefer typed APIs and React Query for data fetching.
+- No inline styles — use Tailwind classes.
+
+---
+
+## Review Process
+
+- A maintainer will review your PR within **5 business days**.
+- UI-heavy PRs may require a recording or live demo.
+- Address all requested changes promptly.
+
+---
+
+## Communication
+
+- GitHub Issues: preferred for task discussion and bug reports
+- Contact: maintainers@guildpass.xyz
+- [GrantFox maintainer app](https://maintainer.grantfox.xyz)
