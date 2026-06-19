@@ -96,11 +96,12 @@ export default function PoliciesPage() {
   })
 
   return (
-    <AdminGuard>
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold">Access Policies</h1>
+    <FeatureGate enabled={features.adminPolicies} name="Access Policies">
+      <AdminGuard>
+        <div className="space-y-4">
+          <h1 className="text-2xl font-semibold">Access Policies</h1>
 
-        {sessionExpired && <SessionExpiredBanner />}
+          {sessionExpired && <SessionExpiredBanner />}
 
         <Card>
           <CardHeader><CardTitle>Resources</CardTitle></CardHeader>
