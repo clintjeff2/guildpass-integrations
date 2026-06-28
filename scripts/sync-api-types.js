@@ -5,7 +5,40 @@ const SCHEMA_PATH = path.join(__dirname, '../test/fixtures/openapi.json');
 const TARGET_PATH = path.join(__dirname, '../lib/api/types.ts');
 
 const STATIC_SUFFIX = `
-// ── Client-side State Types ──────────────────────────────────────────────────
+// Access Decision (cached per wallet + resource)
+
+/**
+ * Result of an access check for a specific resource.
+ * This is the value stored in the route-level access cache.
+ * Only safe display metadata is included - never sensitive tokens.
+ */
+export interface AccessDecision {
+  /** Whether access is granted */
+  allowed: boolean
+  /** Human-readable reason for the decision (safe for display) */
+  reason: string
+  /** ISO timestamp of when the check was performed */
+  checkedAt: string
+}
+
+// Client-side State Types
+
+/**
+ * Distinct states of the admin authentication session.
+ *
+ * - disconnected   - no wallet connected
+ * - connected      - wallet connected, but SIWE sign-in not yet performed
+ * - authenticating - SIWE signing flow is in-flight
+ * - authenticated  - valid, non-expired session token is held
+ * - expired        - a session was held but the token has since expired (or
+ *                    the backend rejected it with 401); re-auth is required
+ */
+export type AdminSessionStatus =
+  | 'disconnected'
+  | 'connected'
+  | 'authenticating'
+  | 'authenticated'
+  | 'expired'
 
 /**
  * Union of authenticated / unauthenticated states for the SIWE context.
@@ -14,10 +47,64 @@ export type SiweAuthState =
   | SiweAuthSession
   | { isAuthenticated: false }
 
-// ── API Interface ─────────────────────────────────────────────────────────────
+// Backend raw types (guildpass-core response shapes)
+// These are the shapes returned by /v1/* endpoints. The live API client maps
+// them into the frontend types above. Fields are optional because backend
+// versions may use snake_case or camelCase, and this mapping handles both.
+
+export interface BackendMember {
+  address?: string
+  wallet_address?: string
+  tier?: MembershipTier
+  membership_tier?: MembershipTier
+  active?: boolean
+  is_active?: boolean
+  expiresAt?: string
+  expires_at?: string
+  roles?: Role[]
+  // Profile fields (returned by /v1/members/:address/profile)
+  displayName?: string
+  display_name?: string
+  username?: string
+  bio?: string
+  badges?: string[]
+}
+
+export interface BackendResource {
+  id: string
+  title?: string
+  name?: string
+  description?: string
+  minTier?: MembershipTier
+  min_tier?: MembershipTier
+  roles?: Role[]
+}
+
+export interface BackendPolicy {
+  resourceId?: string
+  resource_id?: string
+  minTier?: MembershipTier
+  min_tier?: MembershipTier
+  roles?: Role[]
+}
+
+export interface BackendSession {
+  address?: string
+  wallet_address?: string
+  roles?: Role[]
+  membership?: Partial<BackendMember>
+  community?: {
+    id: string
+    name: string
+    description?: string
+    tiers?: MembershipTier[]
+  }
+}
+
+// API Interface
 
 export interface AccessApi {
-  // ── Read-only (no auth token required) ──────────────────────────────────
+  // Read-only (no auth token required)
   getSession(): Promise<Session>
   getCommunity(): Promise<Community>
   getMembership(address: string): Promise<Membership | null>
@@ -26,11 +113,12 @@ export interface AccessApi {
   listResources(): Promise<Resource[]>
   listPolicies(): Promise<AccessPolicy[]>
 
-  // ── Admin mutations (require a valid SIWE token) ─────────────────────────
+  // Admin queries & mutations (require a valid SIWE token context)
+  listWebhookEvents(): Promise<WebhookEventLog[]>
   assignRole(address: string, role: Role): Promise<void>
   updatePolicy(policy: AccessPolicy): Promise<void>
 
-  // ── SIWE authentication endpoints ────────────────────────────────────────
+  // SIWE authentication endpoints
   /** Fetch a one-time nonce for the given address to include in the SIWE message. */
   getNonce(address: string): Promise<string>
   /**
@@ -40,6 +128,7 @@ export interface AccessApi {
   siweVerify(message: string, signature: string): Promise<SiweAuthSession>
   /** Invalidate the current server-side session (no-op for stateless JWTs). */
   siweLogout(token: string): Promise<void>
+  verifyWallet(address: string): Promise<WalletVerification>
 }
 `;
 
@@ -47,9 +136,17 @@ function getTsType(propSchema) {
   if (propSchema.$ref) {
     return propSchema.$ref.split('/').pop();
   }
+
   if (propSchema.enum) {
-    return propSchema.enum.map(val => typeof val === 'string' ? `'${val}'` : val).join(' | ');
+    return propSchema.enum
+      .map((val) => (typeof val === 'string' ? `'${val}'` : val))
+      .join(' | ');
   }
+
+  if (propSchema.additionalProperties) {
+    return 'Record<string, unknown>';
+  }
+
   switch (propSchema.type) {
     case 'string':
       return 'string';
@@ -59,8 +156,17 @@ function getTsType(propSchema) {
     case 'number':
       return 'number';
     case 'array':
-      const itemType = getTsType(propSchema.items);
-      return `${itemType}[]`;
+      return `${getTsType(propSchema.items)}[]`;
+    case 'object':
+      if (propSchema.properties) {
+        const props = Object.entries(propSchema.properties).map(([name, schema]) => {
+          const isRequired =
+            propSchema.required && propSchema.required.includes(name);
+          return `${name}${isRequired ? '' : '?'}: ${getTsType(schema)}`;
+        });
+        return `{ ${props.join('; ')} }`;
+      }
+      return 'Record<string, unknown>';
     default:
       return 'any';
   }
@@ -82,13 +188,16 @@ function generateTypes() {
 
   for (const [schemaName, schemaVal] of Object.entries(schemasObj)) {
     if (schemaVal.enum) {
-      const enumVals = schemaVal.enum.map(v => typeof v === 'string' ? `'${v}'` : v).join(' | ');
+      const enumVals = schemaVal.enum
+        .map((v) => (typeof v === 'string' ? `'${v}'` : v))
+        .join(' | ');
       output += `export type ${schemaName} = ${enumVals}\n\n`;
     } else if (schemaVal.type === 'object') {
       output += `export interface ${schemaName} {\n`;
       const props = schemaVal.properties || {};
       for (const [propName, propVal] of Object.entries(props)) {
-        const isRequired = schemaVal.required && schemaVal.required.includes(propName);
+        const isRequired =
+          schemaVal.required && schemaVal.required.includes(propName);
         const tsType = getTsType(propVal);
         output += `  ${propName}${isRequired ? '' : '?'}: ${tsType}\n`;
       }
@@ -118,7 +227,6 @@ function main() {
       process.exit(1);
     }
     const current = fs.readFileSync(TARGET_PATH, 'utf8');
-    // Normalize newlines for comparison
     const normGen = generated.replace(/\r\n/g, '\n').trim();
     const normCur = current.replace(/\r\n/g, '\n').trim();
 
