@@ -4,7 +4,8 @@ import { useParams } from "next/navigation"
 import { useAccount } from "wagmi"
 import { useQuery } from "@tanstack/react-query"
 import { getApi } from "@/lib/api"
-import { Gated } from "@/components/gated"
+import { queryKeys } from "@/lib/query"
+import { Gated, AccessDenied } from "@/components/gated"
 import { FeatureGate } from "@/components/feature-gate"
 import { EmptyState, LoadingState, ErrorState, safeErrorMessage } from "@/components/ui/api-states"
 import { features } from "@/lib/features"
@@ -14,22 +15,30 @@ export default function DynamicResourceDocs() {
   const { address } = useAccount()
 
   const { data: resource, isLoading: resourceLoading, isError, error, refetch } = useQuery({
-    queryKey: ["resource", resourceId],
+    queryKey: queryKeys.resources.detail(resourceId),
     queryFn: () => getApi(address).getResource(resourceId),
-    enabled: !!resourceId,
+    enabled: !!resourceId && !!address,
     retry: 1,
   })
 
   const { data: policy, isLoading: policyLoading } = useQuery({
-    queryKey: ["policy", resourceId],
+    queryKey: queryKeys.policies.byResource(resourceId),
     queryFn: () => getApi(address).getPolicy(resourceId),
-    enabled: !!resourceId,
+    enabled: !!resourceId && !!address,
     retry: 1,
   })
 
   const effectiveMinTier = useMemo(() => {
     return policy?.minTier !== undefined ? policy.minTier : resource?.minTier
   }, [policy, resource])
+
+  if (!address) {
+    return (
+      <FeatureGate enabled={features.resources} name="Resources">
+        <AccessDenied reason="Please connect your wallet to continue." />
+      </FeatureGate>
+    )
+  }
 
   if (resourceLoading || policyLoading) {
     return (

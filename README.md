@@ -48,7 +48,17 @@ cp .env.example .env.local
 NEXT_PUBLIC_MOCK_MODE=true npm run dev
 ```
 
-Open http://localhost:3000.
+Open http://localhost:3000. In mock mode, a "Dev" link appears in the navigation, taking you to the developer controls page with tools for resetting mock data and applying scenario presets.
+
+#### Mock Developer Controls
+In mock mode, visit `/developer` (or click "Dev" in the nav) to access:
+- **Reset Mock Data**: Reset all mock data (members, resources, policies, webhook events) to initial state
+- **Scenario Presets**: Apply predefined testing scenarios:
+  - Active Member: Active standard tier user
+  - Expired Member: Inactive user with expired membership
+  - Denied Resource: Free tier user denied access to Alpha Docs
+  - Admin Session Expired: Admin user to test expired SIWE sessions
+  - No Roles: Member with no roles assigned
 
 ### Run against live guildpass-core
 
@@ -104,8 +114,17 @@ immediately rather than at runtime.
 | `NEXT_PUBLIC_CORE_API_URL` | Live mode only (validated) | Base URL of the `guildpass-core` access-api — must be a valid absolute URL in live mode |
 | `NEXT_PUBLIC_SIWE_DOMAIN` | No | Domain field in the EIP-4361 message (defaults to `localhost:3000`) |
 | `NEXT_PUBLIC_SIWE_STATEMENT` | No | Human-readable statement shown in the signed message |
+| `NEXT_PUBLIC_WALLET_CHAINS` | No | Comma-separated supported chains for wagmi; supported values: `mainnet`, `base`, `sepolia`; defaults to all three |
+| `NEXT_PUBLIC_WALLET_RPC_MAINNET` | No | Optional browser-safe RPC URL for Ethereum mainnet when enabled |
+| `NEXT_PUBLIC_WALLET_RPC_BASE` | No | Optional browser-safe RPC URL for Base when enabled |
+| `NEXT_PUBLIC_WALLET_RPC_SEPOLIA` | No | Optional browser-safe RPC URL for Sepolia when enabled |
+| `NEXT_PUBLIC_WALLET_CONNECTORS` | No | Comma-separated wallet connectors; currently supports `injected` and defaults to it |
 
 See [`.env.example`](./.env.example) for a ready-to-copy template.
+
+Wallet chain settings are built by [`lib/wallet/config.ts`](./lib/wallet/config.ts). Invalid chain names, empty chain lists, unsupported connectors, or malformed RPC URLs throw a `ConfigError` during development so deployment mistakes are visible before users connect a wallet. In mock mode, leaving these variables unset preserves the local default of `mainnet`, `base`, and `sepolia` with default transports.
+
+Only expose RPC URLs that are safe to bundle into browser JavaScript. Do not put private RPC credentials in `NEXT_PUBLIC_*` variables unless your provider explicitly documents that the key is public and browser-safe.
 
 ---
 
@@ -193,6 +212,7 @@ All live requests are sent to `NEXT_PUBLIC_CORE_API_URL` (default `http://localh
 | `GET` | `/v1/members/:address/profile` | — | Profile for address |
 | `GET` | `/v1/resources` | — | Available gated resources |
 | `GET` | `/v1/policies` | — | Access policies |
+| `GET` | `/v1/admin/events` | Bearer | Admin webhook event feed |
 | `POST` | `/v1/members/:address/roles` | Bearer | Assign role to member |
 | `PUT` | `/v1/policies/:resourceId` | Bearer | Update access policy |
 | `POST` | `/v1/auth/siwe/nonce` | — | Request SIWE nonce |
@@ -201,7 +221,7 @@ All live requests are sent to `NEXT_PUBLIC_CORE_API_URL` (default `http://localh
 
 ### Local dashboard integration gateway
 
-When live mode is enabled, the dashboard uses server-side route handlers to access `@guildpass/integration-client` without exposing private credentials.
+When live mode is enabled, the dashboard uses server-side route handlers to access `@guildpass/integration-client` without exposing private credentials. This is an **optional** integration. To enable it, you must install the private `@guildpass/integration-client` package and set `INTEGRATION_API_KEY` in your `.env.local`. If the package or key is missing, the gateway will return safe 503 errors.
 
 | Method | Path | Description |
 |--------|------|-------------|

@@ -139,7 +139,11 @@ export interface BackendSession {
 
 // ── API Interface ─────────────────────────────────────────────────────────────
 
-export interface AccessApi {
+/**
+ * Read-only member and resource queries.
+ * No SIWE token is required for these operations.
+ */
+export interface MemberAccessApi {
   // ── Read-only (no auth token required) ──────────────────────────────────
   getSession(): Promise<Session>
   getCommunity(): Promise<Community>
@@ -151,12 +155,24 @@ export interface AccessApi {
   listPolicies(): Promise<AccessPolicy[]>
   getResource(id: string): Promise<Resource | null>
   getPolicy(resourceId: string): Promise<AccessPolicy | null>
+}
 
+/**
+ * Authenticated admin queries and mutations.
+ * These methods require a valid SIWE token context.
+ */
+export interface AdminAccessApi {
   // ── Admin queries & mutations (require a valid SIWE token context) ────────
   listWebhookEvents(): Promise<WebhookEventLog[]>
   assignRole(address: string, role: Role): Promise<void>
+  removeRole(address: string, role: Role): Promise<void>
   updatePolicy(policy: AccessPolicy): Promise<void>
+}
 
+/**
+ * SIWE authentication endpoints.
+ */
+export interface SiweAuthApi {
   // ── SIWE authentication endpoints ────────────────────────────────────────
   /** Fetch a one-time nonce for the given address to include in the SIWE message. */
   getNonce(address: string): Promise<string>
@@ -167,16 +183,34 @@ export interface AccessApi {
   siweVerify(message: string, signature: string): Promise<SiweAuthSession>
   /** Invalidate the current server-side session (no-op for stateless JWTs). */
   siweLogout(token: string): Promise<void>
+  verifyWallet(address: string): Promise<WalletVerification>
 }
+
+/**
+ * Composed client-side API contract.
+ *
+ * Built from {@link MemberAccessApi}, {@link AdminAccessApi}, and
+ * {@link SiweAuthApi} so each surface has a single, unambiguous responsibility
+ * and implementations cannot drift between duplicated declarations.
+ */
+export type AccessApi = MemberAccessApi & AdminAccessApi & SiweAuthApi
 `;
 
 function getTsType(propSchema) {
   if (propSchema.$ref) {
     return propSchema.$ref.split('/').pop();
   }
+
   if (propSchema.enum) {
-    return propSchema.enum.map(val => typeof val === 'string' ? `'${val}'` : val).join(' | ');
+    return propSchema.enum
+      .map((val) => (typeof val === 'string' ? `'${val}'` : val))
+      .join(' | ');
   }
+
+  if (propSchema.additionalProperties) {
+    return 'Record<string, unknown>';
+  }
+
   switch (propSchema.type) {
     case 'string':
       return 'string';
@@ -186,12 +220,31 @@ function getTsType(propSchema) {
     case 'number':
       return 'number';
     case 'array':
-      const itemType = getTsType(propSchema.items);
-      return `${itemType}[]`;
+      return `${getTsType(propSchema.items)}[]`;
+    case 'object':
+      if (propSchema.properties) {
+        const props = Object.entries(propSchema.properties).map(([name, schema]) => {
+          const isRequired =
+            propSchema.required && propSchema.required.includes(name);
+          return `${name}${isRequired ? '' : '?'}: ${getTsType(schema)}`;
+        });
+        return `{ ${props.join('; ')} }`;
+      }
+      return 'Record<string, unknown>';
     default:
       return 'any';
   }
 }
+
+// Schemas whose canonical definition lives in STATIC_SUFFIX rather than openapi.json.
+const STATIC_SCHEMA_NAMES = new Set([
+  'ApiErrorBody',
+  'WalletVerification',
+  'WebhookEventLog',
+  'WebhookEventStatus',
+  'WebhookEventType',
+  'WebhookPayloadSummary',
+]);
 
 function generateTypes() {
   const rawSchema = fs.readFileSync(SCHEMA_PATH, 'utf8');
@@ -208,14 +261,21 @@ function generateTypes() {
 `;
 
   for (const [schemaName, schemaVal] of Object.entries(schemasObj)) {
+    if (STATIC_SCHEMA_NAMES.has(schemaName)) {
+      continue;
+    }
+
     if (schemaVal.enum) {
-      const enumVals = schemaVal.enum.map(v => typeof v === 'string' ? `'${v}'` : v).join(' | ');
+      const enumVals = schemaVal.enum
+        .map((v) => (typeof v === 'string' ? `'${v}'` : v))
+        .join(' | ');
       output += `export type ${schemaName} = ${enumVals}\n\n`;
     } else if (schemaVal.type === 'object') {
       output += `export interface ${schemaName} {\n`;
       const props = schemaVal.properties || {};
       for (const [propName, propVal] of Object.entries(props)) {
-        const isRequired = schemaVal.required && schemaVal.required.includes(propName);
+        const isRequired =
+          schemaVal.required && schemaVal.required.includes(propName);
         const tsType = getTsType(propVal);
         output += `  ${propName}${isRequired ? '' : '?'}: ${tsType}\n`;
       }
@@ -245,7 +305,6 @@ function main() {
       process.exit(1);
     }
     const current = fs.readFileSync(TARGET_PATH, 'utf8');
-    // Normalize newlines for comparison
     const normGen = generated.replace(/\r\n/g, '\n').trim();
     const normCur = current.replace(/\r\n/g, '\n').trim();
 
