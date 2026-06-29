@@ -16,6 +16,7 @@ import { LoadingState, ErrorState, EmptyState, DeniedState, safeErrorMessage } f
 import { applyOptimisticRole, applyOptimisticRemoveRole } from '@/lib/api/optimistic'
 import { AddressText } from '@/components/wallet/address-text'
 import { MembershipTier } from '@/lib/api/types'
+import { isWalletAddress, normalizeAddress } from '@/lib/wallet/address'
 
 type AssignRoleInput = {
   address: string
@@ -68,6 +69,10 @@ export default function MembersPage() {
   const [successAssignment, setSuccessAssignment] = useState<AssignRoleInput | null>(null)
   const [successMessage, setSuccessMessage] = useState('')
   const [rollbackMessage, setRollbackMessage] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
+  
+  const normalizedAddr = normalizeAddress(addr)
+  const isValidAddress = isWalletAddress(normalizedAddr)
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState('')
@@ -194,6 +199,7 @@ export default function MembersPage() {
                 placeholder="0x…"
                 value={addr}
                 onChange={(e) => setAddr(e.target.value)}
+                className={!isValidAddress && addr.trim() ? 'border-destructive' : ''}
               />
               <select
                 id="assign-role-select"
@@ -207,12 +213,17 @@ export default function MembersPage() {
               </select>
               <Button
                 id="assign-role-btn"
-                onClick={() => mutate({ address: addr, role })}
-                disabled={!addr || isPending}
+                onClick={() => mutate({ address: normalizedAddr, role })}
+                disabled={!isValidAddress || isPending}
               >
                 {isPending ? 'Assigning…' : 'Assign'}
               </Button>
             </div>
+            {!isValidAddress && addr.trim() && (
+              <div className="text-sm text-destructive" role="alert">
+                Please enter a valid wallet address (0x followed by 40 hexadecimal characters)
+              </div>
+            )}
             {successAssignment && (
               <div className="text-sm text-green-700 dark:text-green-400" role="status">
                 Role &quot;{successAssignment.role}&quot; saved for{' '}
